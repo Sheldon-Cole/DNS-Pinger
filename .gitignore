@@ -1,0 +1,6 @@
+*/.venv
+.env
+firewall-config.yaml
+__pycache__/
+*.py[cod]
+

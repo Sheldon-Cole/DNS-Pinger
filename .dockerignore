@@ -1,0 +1,10 @@
+.git
+.gitea
+.env
+*.env
+.venv
+*/.venv
+__pycache__
+*.py[cod]
+config/firewall-config.yaml
+firewall-config.yaml

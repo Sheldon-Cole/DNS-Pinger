@@ -1,0 +1,28 @@
+---
+name: Example
+rules:
+  - action: accept
+    protocol: SSH
+    port: "22"
+    source: any
+    source_detail: any
+  - action: accept
+    protocol: HTTP
+    port: "80"
+    source: any
+    source_detail: any
+  - action: accept
+    protocol: HTTPS
+    port: "443"
+    source: any
+    source_detail: any
+  - action: accept
+    protocol: UDP
+    port: "443"
+    source: any
+    source_detail: any
+  - action: accept
+    protocol: HTTPS
+    port: "443"
+    source: custom
+    source_detail: "{{ dns_record }}"

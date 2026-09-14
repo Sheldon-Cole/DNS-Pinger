@@ -1,0 +1,14 @@
+---
+services:
+  dns-pinger:
+    container_name: dns-pinger
+    image: <registry>/<username>/dns-pinger:latest
+    environment:
+      - APIKEY=<hostinger_api_key>
+      - DOMAINS=<comma.separated, domain.com>
+      - FIREWALL_NAME=<name of firewall>
+      - INTERVAL=300
+      - PRETTY_JSON=true
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
