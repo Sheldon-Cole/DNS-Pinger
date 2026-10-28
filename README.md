@@ -1,3 +1,5 @@
+![DNS Pinger - L4 VPS Firewall & L7 Policy Sync](dns-pinger.jpeg)
+
 # DNS Pinger
 
 A lightweight daemon that continuously monitors dynamic DNS records and synchronizes them with your **Hostinger VPS Firewall** (Layer 4) and/or **Pangolin Shared Policies** (Layer 7).
