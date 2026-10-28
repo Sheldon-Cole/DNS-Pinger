@@ -1,6 +1,10 @@
 */.venv
 .env
 firewall-config.yaml
+hostinger-config.yaml
+hostinger.yaml
+pangolin-config.yaml
+pangolin.yaml
 __pycache__/
 *.py[cod]
 

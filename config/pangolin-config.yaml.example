@@ -1,0 +1,14 @@
+---
+name: Example Shared Policy
+apply_rules: true
+rules:
+  - action: ACCEPT
+    match: IP
+    value: "{{ dns_record }}"
+    priority: 100
+    enabled: true
+  - action: DROP
+    match: CIDR
+    value: "0.0.0.0/0"
+    priority: 200
+    enabled: true

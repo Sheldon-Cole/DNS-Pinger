@@ -1,17 +1,18 @@
 # DNS Pinger
 
-A lightweight daemon that continuously monitors dynamic DNS records and synchronizes them with your Hostinger VPS firewall rules.
+A lightweight daemon that continuously monitors dynamic DNS records and synchronizes them with your **Hostinger VPS Firewall** (Layer 4) and/or **Pangolin Shared Policies** (Layer 7).
 
-If your home or office IP changes frequently, DNS Pinger resolves your domains and updates your Hostinger VPS firewall group automatically so you never get locked out.
+If your home or office IP changes frequently, DNS Pinger resolves your domains and updates your Hostinger VPS firewall group and Pangolin resource policies automatically so you never get locked out.
 
 ---
 
 ## Features
 
+* **Dual-Layer Synchronization**: Manage Hostinger VPS firewall rules (Infrastructure as Code), Pangolin Shared Policies (Public Resource Policies), or both simultaneously.
 * **Dynamic DNS Tracking**: Resolves domain records (`A` and `AAAA`) at configurable intervals.
-* **On-the-Fly Config Reloading**: Edit your firewall rules in `config/firewall-config.yaml` anytime; the container re-evaluates the config file dynamically on each check without requiring a container restart or recreation.
-* **Drift & Change Detection**: Compares desired rules against active rules in Hostinger, only making API calls when DNS records or configuration rules actually change.
-* **DNS Outage Safeguard**: If DNS resolution temporarily fails or returns no records, the update cycle is aborted to prevent wiping out active firewall rules.
+* **On-the-Fly Config Reloading**: Edit your rules in `config/hostinger-config.yaml` and `config/pangolin-config.yaml` anytime; the container re-evaluates the config files dynamically on each check without requiring a container restart or recreation.
+* **Drift & Change Detection**: Compares desired rules against active rules in Hostinger and Pangolin, only making API calls when DNS records or configuration rules actually change.
+* **DNS Outage Safeguard**: If DNS resolution temporarily fails or returns no records, the update cycle is aborted to prevent wiping out active rules.
 * **Graceful Shutdown**: Listens for `SIGTERM` and `SIGINT` signals to terminate immediately and cleanly.
 * **Structured Logging**: Formatted timestamps and log levels (`INFO`, `DEBUG`, `WARNING`, `ERROR`).
 
@@ -28,19 +29,27 @@ cp .env.example .env
 ```
 
 Edit `.env` with your details:
-* `APIKEY`: Your Hostinger API token (with VPS management permissions).
-* `DOMAINS`: Comma-separated list of domains to track (e.g. `home.example.com`).
-* `FIREWALL_NAME`: The name of the firewall group in Hostinger (e.g. `MyFirewallGroup`).
+* **General**:
+  * `DOMAINS`: Comma-separated list of domains to track (e.g. `home.example.com`).
+* **Hostinger VPS Firewall** *(optional if only using Pangolin)*:
+  * `HOSTINGER_API_KEY` (or `APIKEY`): Your Hostinger API token (with VPS management permissions).
+  * `FIREWALL_NAME`: The name of the firewall group in Hostinger (e.g. `MyFirewallGroup`).
+* **Pangolin Shared Policy** *(optional if only using Hostinger)*:
+  * `PANGOLIN_URL`: Base URL for your Pangolin Integration API (e.g. `https://api.example.com`).
+  * `PANGOLIN_API_KEY`: Your Pangolin Integration API key (with `Get Resource Policy` and `Set Resource Policy Rules` permissions).
+  * `PANGOLIN_POLICY_ID`: Numeric ID of the Shared Policy to update (or set `PANGOLIN_ORG_ID` and `PANGOLIN_POLICY_NAME` with `List Resource Policies` permission).
 
-### 2. Configure Firewall Rules
+### 2. Configure Rules
 
-Copy the example firewall configuration:
+Copy the example configuration files for the integrations you are using:
 
 ```bash
-cp config/firewall-config.yaml.example config/firewall-config.yaml
+cp config/hostinger-config.yaml.example config/hostinger-config.yaml
+cp config/pangolin-config.yaml.example config/pangolin-config.yaml
 ```
 
-Edit `config/firewall-config.yaml` to specify the rules for your firewall group. Use `source_detail: "{{ dns_record }}"` on rules where you want your resolved dynamic IP addresses inserted:
+#### Hostinger Firewall Rules (`config/hostinger-config.yaml`)
+Use `source_detail: "{{ dns_record }}"` on rules where you want your resolved dynamic IP addresses inserted:
 
 ```yaml
 ---
@@ -49,14 +58,43 @@ rules:
   - action: accept
     protocol: SSH
     port: "22"
+    source: custom
+    source_detail: "{{ dns_record }}"
+  - action: accept
+    protocol: HTTP
+    port: "80"
     source: any
     source_detail: any
-
   - action: accept
     protocol: HTTPS
     port: "443"
-    source: custom
-    source_detail: "{{ dns_record }}"
+    source: any
+    source_detail: any
+  - action: accept
+    protocol: UDP
+    port: "443"
+    source: any
+    source_detail: any
+```
+
+#### Pangolin Shared Policy Rules (`config/pangolin-config.yaml`)
+Use `value: "{{ dns_record }}"` on rules where you want your resolved dynamic IP addresses inserted:
+
+```yaml
+---
+name: Example Shared Policy
+apply_rules: true
+rules:
+  - action: ACCEPT
+    match: IP
+    value: "{{ dns_record }}"
+    priority: 100
+    enabled: true
+  - action: DROP
+    match: CIDR
+    value: "0.0.0.0/0"
+    priority: 200
+    enabled: true
 ```
 
 ### 3. Run with Docker Compose
@@ -79,16 +117,34 @@ docker compose logs -f
 
 All settings can be configured via environment variables in `.env` or `docker-compose.yaml`:
 
+### General Settings
+
 | Variable | Required | Default | Description |
 | :--- | :---: | :--- | :--- |
-| `APIKEY` | **Yes** | — | Hostinger API Access Token. |
 | `DOMAINS` | **Yes** | — | Comma-separated domains to monitor (e.g. `home.example.com,vpn.example.com`). |
 | `RECORD_TYPES` | No | `A` | DNS record types to resolve (`A`, `AAAA`, or `A,AAAA`). |
-| `FIREWALL_NAME` | No | *(first found)* | Name of the firewall group in Hostinger VPS panel. |
-| `INTERVAL` | No | `300` | Seconds to wait between DNS and firewall checks. |
+| `INTERVAL` | No | `300` | Seconds to wait between DNS and rule checks. |
 | `LOG_LEVEL` | No | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
-| `CONFIG_PATH` | No | `./config/firewall-config.yaml` | Path to the firewall rules YAML configuration file. |
-| `PRETTY_JSON` | No | `false` | When `true`, logs raw Hostinger API responses at `DEBUG` level. |
+| `PRETTY_JSON` | No | `false` | When `true`, logs raw API responses at `DEBUG` level. |
+
+### Hostinger Settings
+
+| Variable | Required | Default | Description |
+| :--- | :---: | :--- | :--- |
+| `HOSTINGER_API_KEY` | Yes *(for Hostinger)* | — | Hostinger API Access Token (`APIKEY` is also supported as an alias). |
+| `FIREWALL_NAME` | No | *(first found)* | Name of the firewall group in Hostinger VPS panel. |
+| `HOSTINGER_CONFIG_PATH` | No | `./config/hostinger-config.yaml` | Path to the Hostinger firewall rules YAML configuration file (`CONFIG_PATH` is also supported). |
+
+### Pangolin Settings
+
+| Variable | Required | Default | Description |
+| :--- | :---: | :--- | :--- |
+| `PANGOLIN_URL` | Yes *(for Pangolin)* | — | Pangolin Integration API URL (e.g. `https://api.example.com`). |
+| `PANGOLIN_API_KEY` | Yes *(for Pangolin)* | — | Pangolin Integration API Bearer Token. |
+| `PANGOLIN_POLICY_ID` | Yes *(or Org + Name)* | — | Numeric ID of the Pangolin Shared Policy (`resourcePolicyId`). |
+| `PANGOLIN_ORG_ID` | No | — | Organization ID used when looking up a policy by name instead of `PANGOLIN_POLICY_ID`. |
+| `PANGOLIN_POLICY_NAME` | No | *(first found)* | Policy name or `niceId` to match when `PANGOLIN_ORG_ID` is used. |
+| `PANGOLIN_CONFIG_PATH` | No | `./config/pangolin-config.yaml` | Path to the Pangolin policy rules YAML configuration file. |
 
 ---
 
