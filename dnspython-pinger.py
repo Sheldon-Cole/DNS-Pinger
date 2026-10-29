@@ -228,6 +228,8 @@ def update_firewall_rules(api_key, firewall_config, firewall_id, pjson):
 
 def normalize_pangolin_url(url):
     base = url.strip().rstrip("/")
+    if not base.startswith(("http://", "https://")):
+        base = f"https://{base}"
     if not base.endswith("/v1"):
         base = f"{base}/v1"
     return base
@@ -245,8 +247,8 @@ def pangolin_api_request(base_url, api_key, method, endpoint, payload=None, pjso
         headers["Content-Type"] = "application/json"
         data = json.dumps(payload).encode("utf-8")
 
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw_body = resp.read().decode("utf-8")
             parsed = json.loads(raw_body) if raw_body else {}
@@ -294,15 +296,28 @@ def resolve_pangolin_policy_id(base_url, api_key, org_id, policy_name, pjson=Fal
     if not policy_name:
         return policies[0].get("resourcePolicyId")
 
-    target = str(policy_name).strip()
+    target = str(policy_name).strip().lower()
     for p in policies:
-        if p.get("name") == target or p.get("niceId") == target:
+        p_name = str(p.get("name") or "").strip().lower()
+        p_nice = str(p.get("niceId") or "").strip().lower()
+        if target in (p_name, p_nice):
             return p.get("resourcePolicyId")
 
+    available = []
+    for p in policies:
+        p_name = p.get("name")
+        p_id = p.get("resourcePolicyId")
+        p_nice = p.get("niceId")
+        details = [f"id={p_id}"]
+        if p_nice:
+            details.append(f"niceId={p_nice}")
+        available.append(f"'{p_name}' ({', '.join(details)})")
+
     logger.warning(
-        "Resource policy '%s' not found in Pangolin org '%s'.",
+        "Resource policy '%s' not found in Pangolin org '%s'. Available policies: %s",
         policy_name,
         org_id,
+        ", ".join(available),
     )
     return None
 
@@ -447,9 +462,14 @@ def sync_hostinger(api_key, firewall_name, ip_records, pjson):
 
     if target_fw is None:
         if firewall_name:
+            available_fws = [
+                f"'{fw.get('name')}' (id={fw.get('id')})"
+                for fw in api_dict.get("data", [])
+            ]
             logger.warning(
-                "Firewall '%s' not found in Hostinger account. Skipping Hostinger sync...",
+                "Firewall '%s' not found in Hostinger account. Available firewalls: %s. Skipping Hostinger sync...",
                 firewall_name,
+                ", ".join(available_fws) if available_fws else "none",
             )
         else:
             logger.warning("No firewalls found in Hostinger account. Skipping Hostinger sync...")
