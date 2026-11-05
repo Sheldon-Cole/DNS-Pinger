@@ -1,6 +1,57 @@
 ---
 name: Example Shared Policy
 apply_rules: true
+
+# Optional: Authentication settings for the Shared Policy.
+# Uncomment any section below to manage that authentication method via DNS Pinger.
+# Supports inline values or ${ENV_VAR} / ${ENV_VAR:-default} interpolation.
+#
+# auth:
+#   # 1. Platform SSO & Access Control (/resource-policy/{id}/access-control)
+#   #    Requires API Key permissions: Set Resource Policy Users & Set Resource Policy Roles
+#   #    (plus List Roles / List Users if resolving role names or user emails)
+#   sso:
+#     enabled: true
+#     roles:
+#       - "Member"
+#     # role_ids: [1]
+#     users: []
+#     # user_ids: []
+#     idp: null  # Optional Identity Provider name or numeric ID to auto-skip to on login
+#
+#   # 2. Email Whitelist (/resource-policy/{id}/whitelist)
+#   #    Requires API Key permission: Set Resource Policy Whitelist
+#   email_whitelist:
+#     enabled: false
+#     emails:
+#       - "user@example.com"
+#       - "*@example.com"
+#
+#   # 3. Password Protection (/resource-policy/{id}/password)
+#   #    Requires API Key permission: Set Resource Policy Password (4-100 chars)
+#   password:
+#     enabled: false
+#     value: "${PANGOLIN_POLICY_PASSWORD}"
+#
+#   # 4. PIN Code Protection (/resource-policy/{id}/pincode)
+#   #    Requires API Key permission: Set Resource Policy Pincode (6-digit numeric string)
+#   pincode:
+#     enabled: false
+#     value: "123456"
+#
+#   # 5. Header Authentication / Basic Auth (/resource-policy/{id}/header-auth)
+#   #    Requires API Key permission: Set Resource Policy Header Auth (user & password 4-100 chars)
+#   header_auth:
+#     enabled: false
+#     user: "myuser"
+#     password: "${PANGOLIN_HEADER_AUTH_PASSWORD}"
+#     extended_compatibility: false
+#
+#   # 6. Mutual TLS (mTLS) Client Certificate Requirement (/resource-policy/{id})
+#   #    Requires API Key permission: Update Resource Policy
+#   #    (Requires at least one trusted CA certificate uploaded to the policy in Pangolin)
+#   mtls_enabled: false
+
 rules:
   - action: ACCEPT
     match: IP

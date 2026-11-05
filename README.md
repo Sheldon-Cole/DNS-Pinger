@@ -79,13 +79,37 @@ rules:
     source_detail: any
 ```
 
-#### Pangolin Shared Policy Rules (`config/pangolin-config.yaml`)
-Use `value: "{{ dns_record }}"` on rules where you want your resolved dynamic IP addresses inserted:
+#### Pangolin Shared Policy Rules & Authentication (`config/pangolin-config.yaml`)
+Use `value: "{{ dns_record }}"` on rules where you want your resolved dynamic IP addresses inserted. You can also optionally define an `auth:` block to manage Pangolin Shared Policy authentication settings (SSO, Roles, Users, Identity Provider, Email Whitelist, Password, PIN Code, Header Auth, and mTLS). String values in YAML support `${ENV_VAR}` and `${ENV_VAR:-default}` environment variable interpolation:
 
 ```yaml
 ---
 name: Example Shared Policy
 apply_rules: true
+
+# Optional: Only the auth sub-sections explicitly uncommented/defined are synced
+# auth:
+#   sso:
+#     enabled: true
+#     roles: ["Member"]
+#     users: []
+#     idp: null
+#   email_whitelist:
+#     enabled: false
+#     emails: ["user@example.com", "*@example.com"]
+#   password:
+#     enabled: false
+#     value: "${PANGOLIN_POLICY_PASSWORD}"
+#   pincode:
+#     enabled: false
+#     value: "123456"
+#   header_auth:
+#     enabled: false
+#     user: "myuser"
+#     password: "${PANGOLIN_HEADER_AUTH_PASSWORD}"
+#     extended_compatibility: false
+#   mtls_enabled: false
+
 rules:
   - action: ACCEPT
     match: IP
