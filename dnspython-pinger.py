@@ -149,17 +149,96 @@ def load_yaml_template(config_path, default_filename="hostinger-config.yaml"):
 get_config_path = get_hostinger_config_path
 load_firewall_template = load_yaml_template
 
+_DNS_RECORD_TEMPLATE_RE = re.compile(
+    r"^\{\{\s*(?:dns_record|cname|domain)(?:\s*:\s*(.+?))?\s*\}\}$",
+    re.IGNORECASE,
+)
+_RULE_DOMAIN_KEYS = ("cname", "domain", "domains")
 
-def build_firewall_rules(template_config, ip_records, firewall_id):
+
+def _normalize_domain_list(raw):
+    if isinstance(raw, str):
+        return [d.strip() for d in raw.split(",") if d.strip()]
+    if isinstance(raw, (list, tuple, set)):
+        result = []
+        for item in raw:
+            if item is not None:
+                result.extend(d.strip() for d in str(item).split(",") if d.strip())
+        return result
+    return []
+
+
+def parse_rule_dns_targets(rule, detail_key="source_detail"):
+    for k in _RULE_DOMAIN_KEYS:
+        if k in rule and rule[k] is not None:
+            domains = _normalize_domain_list(rule[k])
+            if domains:
+                return True, domains
+
+    raw_detail = str(rule.get(detail_key, "")).strip()
+    match = _DNS_RECORD_TEMPLATE_RE.match(raw_detail)
+    if match:
+        target_part = match.group(1)
+        if target_part:
+            domains = _normalize_domain_list(target_part)
+            if domains:
+                return True, domains
+        return True, None
+
+    return False, None
+
+
+def resolve_domains_cached(target_domains, record_types=("A",), domain_ip_map=None):
+    if domain_ip_map is None:
+        domain_ip_map = {}
+
+    resolved_ips = []
+    for d in target_domains:
+        clean_domain = d.strip()
+        if not clean_domain:
+            continue
+        key = clean_domain.lower()
+        if key not in domain_ip_map:
+            domain_ip_map[key] = resolve_domain(clean_domain, record_types)
+        for ip in domain_ip_map[key]:
+            if ip not in resolved_ips:
+                resolved_ips.append(ip)
+
+    return resolved_ips
+
+
+def build_firewall_rules(
+    template_config, ip_records, firewall_id, record_types=("A",), domain_ip_map=None
+):
     final_rules = []
     for rule in template_config.get("rules", []):
-        if rule.get("source_detail") == "{{ dns_record }}":
-            for ip in ip_records:
-                new_rule = rule.copy()
+        is_dynamic, specific_domains = parse_rule_dns_targets(
+            rule, detail_key="source_detail"
+        )
+        base_rule = {k: v for k, v in rule.items() if k not in _RULE_DOMAIN_KEYS}
+
+        if not is_dynamic:
+            final_rules.append(base_rule)
+        elif specific_domains:
+            rule_ips = resolve_domains_cached(
+                specific_domains, record_types=record_types, domain_ip_map=domain_ip_map
+            )
+            if not rule_ips:
+                logger.warning(
+                    "DNS resolution for rule-specific domain(s) %s returned no records. "
+                    "Skipping Hostinger sync this cycle to avoid dropping rules...",
+                    specific_domains,
+                )
+                return None
+            for ip in rule_ips:
+                new_rule = base_rule.copy()
                 new_rule["source_detail"] = ip
                 final_rules.append(new_rule)
         else:
-            final_rules.append(rule.copy())
+            for ip in ip_records:
+                new_rule = base_rule.copy()
+                new_rule["source_detail"] = ip
+                final_rules.append(new_rule)
 
     return {
         "name": template_config.get("name"),
@@ -366,7 +445,9 @@ def get_pangolin_policy(base_url, api_key, policy_id, pjson=False):
     return resp["data"]
 
 
-def build_pangolin_rules(template_config, ip_records):
+def build_pangolin_rules(
+    template_config, ip_records, record_types=("A",), domain_ip_map=None
+):
     apply_rules = bool(
         template_config.get("apply_rules", template_config.get("applyRules", True))
     )
@@ -379,8 +460,32 @@ def build_pangolin_rules(template_config, ip_records):
         enabled = bool(rule.get("enabled", True))
         raw_value = str(rule.get("value", "")).strip()
 
-        if raw_value == "{{ dns_record }}":
-            for ip in ip_records:
+        is_dynamic, specific_domains = parse_rule_dns_targets(
+            rule, detail_key="value"
+        )
+
+        if not is_dynamic:
+            final_rules.append(
+                {
+                    "action": action,
+                    "match": match_type,
+                    "value": raw_value,
+                    "priority": priority,
+                    "enabled": enabled,
+                }
+            )
+        elif specific_domains:
+            rule_ips = resolve_domains_cached(
+                specific_domains, record_types=record_types, domain_ip_map=domain_ip_map
+            )
+            if not rule_ips:
+                logger.warning(
+                    "DNS resolution for rule-specific domain(s) %s returned no records. "
+                    "Skipping Pangolin rules sync this cycle to avoid dropping rules...",
+                    specific_domains,
+                )
+                return None
+            for ip in rule_ips:
                 final_rules.append(
                     {
                         "action": action,
@@ -391,15 +496,16 @@ def build_pangolin_rules(template_config, ip_records):
                     }
                 )
         else:
-            final_rules.append(
-                {
-                    "action": action,
-                    "match": match_type,
-                    "value": raw_value,
-                    "priority": priority,
-                    "enabled": enabled,
-                }
-            )
+            for ip in ip_records:
+                final_rules.append(
+                    {
+                        "action": action,
+                        "match": match_type,
+                        "value": ip,
+                        "priority": priority,
+                        "enabled": enabled,
+                    }
+                )
 
     return {
         "applyRules": apply_rules,
@@ -1170,22 +1276,42 @@ def pretty_json(data):
 
 def resolve_domain(domain, record_types=("A",)):
     ip_addresses = []
+    clean_domain = domain.strip().rstrip(".")
     for rtype in record_types:
         try:
-            records = resolver.resolve(domain, rtype)
+            records = resolver.resolve(clean_domain, rtype)
+            canonical = getattr(records, "canonical_name", None)
+            canonical_str = str(canonical).rstrip(".") if canonical else ""
+            is_cname = bool(
+                canonical_str and canonical_str.lower() != clean_domain.lower()
+            )
             for rdata in records:
-                logger.info("%s - %s Record: %s", domain, rtype, rdata.address)
-                ip_addresses.append(rdata.address)
+                address = getattr(rdata, "address", None)
+                if address:
+                    if is_cname:
+                        logger.info(
+                            "%s (CNAME -> %s) - %s Record: %s",
+                            clean_domain,
+                            canonical_str,
+                            rtype,
+                            address,
+                        )
+                    else:
+                        logger.info("%s - %s Record: %s", clean_domain, rtype, address)
+                    if address not in ip_addresses:
+                        ip_addresses.append(address)
         except resolver.NoAnswer:
-            logger.debug("%s has no %s records", domain, rtype)
+            logger.debug("%s has no %s records", clean_domain, rtype)
         except resolver.NXDOMAIN:
-            logger.warning("Domain does not exist: %s", domain)
+            logger.warning("Domain does not exist: %s", clean_domain)
         except Exception as e:
-            logger.error("Error fetching %s record for %s: %s", rtype, domain, e)
+            logger.error("Error fetching %s record for %s: %s", rtype, clean_domain, e)
     return ip_addresses
 
 
-def sync_hostinger(api_key, firewall_name, ip_records, pjson):
+def sync_hostinger(
+    api_key, firewall_name, ip_records, pjson, record_types=("A",), domain_ip_map=None
+):
     config_path = get_hostinger_config_path()
     template = load_yaml_template(config_path, default_filename="hostinger-config.yaml")
     if template is None:
@@ -1220,13 +1346,31 @@ def sync_hostinger(api_key, firewall_name, ip_records, pjson):
         return
 
     firewall_id = target_fw["id"]
-    desired_config = build_firewall_rules(template, ip_records, firewall_id)
+    desired_config = build_firewall_rules(
+        template,
+        ip_records,
+        firewall_id,
+        record_types=record_types,
+        domain_ip_map=domain_ip_map,
+    )
+    if desired_config is None:
+        return
 
     if should_update_firewall(target_fw, desired_config):
         update_firewall_rules(api_key, desired_config, firewall_id, pjson)
 
 
-def sync_pangolin(base_url, api_key, env_policy_id, env_org_id, env_policy_name, ip_records, pjson):
+def sync_pangolin(
+    base_url,
+    api_key,
+    env_policy_id,
+    env_org_id,
+    env_policy_name,
+    ip_records,
+    pjson,
+    record_types=("A",),
+    domain_ip_map=None,
+):
     config_path = get_pangolin_config_path()
     template = load_yaml_template(config_path, default_filename="pangolin-config.yaml")
     if not isinstance(template, dict):
@@ -1258,8 +1402,15 @@ def sync_pangolin(base_url, api_key, env_policy_id, env_org_id, env_policy_name,
         return
 
     if any(k in template for k in ("rules", "apply_rules", "applyRules")):
-        desired_config = build_pangolin_rules(template, ip_records)
-        if should_update_pangolin_policy(current_policy, desired_config):
+        desired_config = build_pangolin_rules(
+            template,
+            ip_records,
+            record_types=record_types,
+            domain_ip_map=domain_ip_map,
+        )
+        if desired_config is not None and should_update_pangolin_policy(
+            current_policy, desired_config
+        ):
             update_pangolin_policy_rules(base_url, api_key, policy_id, desired_config, pjson=pjson)
 
     sync_pangolin_auth(
@@ -1331,8 +1482,13 @@ def main():
     while not shutdown_event.is_set():
         # 1. Resolve DNS records once per cycle for all enabled integrations
         ip_records = []
+        domain_ip_map = {}
         for domain in domains:
-            ip_records.extend(resolve_domain(domain, record_types))
+            resolved = resolve_domain(domain, record_types)
+            domain_ip_map[domain.lower()] = resolved
+            for ip in resolved:
+                if ip not in ip_records:
+                    ip_records.append(ip)
 
         # Guard: do not wipe rules if DNS resolution failed
         if not ip_records:
@@ -1344,7 +1500,14 @@ def main():
 
         # 2. Sync Hostinger Firewall if enabled
         if hostinger_enabled:
-            sync_hostinger(hostinger_api_key, firewall_name, ip_records, pjson)
+            sync_hostinger(
+                hostinger_api_key,
+                firewall_name,
+                ip_records,
+                pjson,
+                record_types=record_types,
+                domain_ip_map=domain_ip_map,
+            )
 
         # 3. Sync Pangolin Shared Policy if enabled
         if pangolin_enabled:
@@ -1356,6 +1519,8 @@ def main():
                 pangolin_policy_name,
                 ip_records,
                 pjson,
+                record_types=record_types,
+                domain_ip_map=domain_ip_map,
             )
 
         shutdown_event.wait(interval)

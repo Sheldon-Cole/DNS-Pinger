@@ -51,7 +51,7 @@ cp config/pangolin-config.yaml.example config/pangolin-config.yaml
 ```
 
 #### Hostinger Firewall Rules (`config/hostinger-config.yaml`)
-Use `source_detail: "{{ dns_record }}"` on rules where you want your resolved dynamic IP addresses inserted:
+Use `source_detail: "{{ dns_record }}"` on rules where you want all resolved dynamic IP addresses from `DOMAINS` inserted, or target a specific domain/CNAME record on individual ports using `source_detail: "{{ dns_record:sub.example.com }}"` (or by adding `cname: "sub.example.com"` / `domain: "sub.example.com"` to the rule):
 
 ```yaml
 ---
@@ -62,6 +62,11 @@ rules:
     port: "22"
     source: custom
     source_detail: "{{ dns_record }}"
+  - action: accept
+    protocol: TCP
+    port: "10051"
+    source: custom
+    source_detail: "{{ dns_record:zabbix.example.com }}"
   - action: accept
     protocol: HTTP
     port: "80"

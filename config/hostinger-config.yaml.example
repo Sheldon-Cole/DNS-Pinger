@@ -26,3 +26,10 @@ rules:
     port: "443"
     source: custom
     source_detail: "{{ dns_record }}"
+  # Optional: Restrict a port (e.g. Zabbix 10051) to a specific domain or CNAME record
+  # using "{{ dns_record:sub.example.com }}" (or by adding cname: "sub.example.com"):
+  # - action: accept
+  #   protocol: TCP
+  #   port: "10051"
+  #   source: custom
+  #   source_detail: "{{ dns_record:zabbix.example.com }}"
