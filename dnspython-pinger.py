@@ -217,6 +217,19 @@ def build_firewall_rules(
         )
         base_rule = {k: v for k, v in rule.items() if k not in _RULE_DOMAIN_KEYS}
 
+        raw_source = str(base_rule.get("source", "")).strip().lower()
+        raw_detail = str(base_rule.get("source_detail", "")).strip()
+        if raw_source == "any" and ((raw_detail and raw_detail.lower() != "any") or is_dynamic):
+            logger.warning(
+                "Hostinger rule (%s %s port %s) has 'source: any' with 'source_detail: %s'. "
+                "Replacing 'source: any' with 'source: custom'.",
+                base_rule.get("action"),
+                base_rule.get("protocol"),
+                base_rule.get("port"),
+                raw_detail or specific_domains,
+            )
+            base_rule["source"] = "custom"
+
         if not is_dynamic:
             final_rules.append(base_rule)
         elif specific_domains:
