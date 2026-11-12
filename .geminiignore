@@ -1,0 +1,23 @@
+# Vault & Secret Files
+**/vault.yml
+**/vault.yaml
+**/*vault*
+.vault_pass
+
+# Environment & Credential Files
+.env
+.env.*
+**/.env*
+**/secrets/**
+
+# Cryptographic Keys & Certificates
+*.key
+**/*.key
+*.pem
+**/*.pem
+**/id_rsa*
+**/id_ed25519*
+
+# Raw Audit Staging Data
+staging/
+**/staging/**
