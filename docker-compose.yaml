@@ -4,11 +4,16 @@ services:
     container_name: dns-pinger
     image: <registry>/<username>/dns-pinger:latest
     environment:
-      - APIKEY=<hostinger_api_key>
       - DOMAINS=<comma.separated, domain.com>
-      - FIREWALL_NAME=<name of firewall>
       - INTERVAL=300
       - PRETTY_JSON=true
+      # Hostinger VPS Firewall (optional)
+      - HOSTINGER_API_KEY=<hostinger_api_key>
+      - FIREWALL_NAME=<name of firewall>
+      # Pangolin Shared Policy (optional)
+      - PANGOLIN_URL=https://api.example.com
+      - PANGOLIN_API_KEY=<pangolin_api_key>
+      - PANGOLIN_POLICY_ID=<policy_id>
     restart: unless-stopped
     volumes:
       - ./config:/app/config

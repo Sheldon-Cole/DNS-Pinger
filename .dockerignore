@@ -8,3 +8,11 @@ __pycache__
 *.py[cod]
 config/firewall-config.yaml
 firewall-config.yaml
+config/hostinger-config.yaml
+hostinger-config.yaml
+config/hostinger.yaml
+hostinger.yaml
+config/pangolin-config.yaml
+pangolin-config.yaml
+config/pangolin.yaml
+pangolin.yaml
