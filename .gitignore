@@ -7,4 +7,5 @@ pangolin-config.yaml
 pangolin.yaml
 __pycache__/
 *.py[cod]
+AGENTS.md
 

@@ -194,3 +194,9 @@ pip install -r requirements.txt
 # Run the script
 python dnspython-pinger.py
 ```
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
