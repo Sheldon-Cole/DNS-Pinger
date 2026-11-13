@@ -1,5 +1,6 @@
 .git
 .gitea
+.github
 .env
 *.env
 .venv

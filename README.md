@@ -130,6 +130,8 @@ rules:
 
 ### 3. Run with Docker Compose
 
+Pre-built multi-arch (`linux/amd64`, `linux/arm64`) images are published to GitHub Container Registry at `ghcr.io/sheldon-cole/dns-pinger:latest`.
+
 Start the container in the background:
 
 ```bash

@@ -2,7 +2,7 @@
 services:
   dns-pinger:
     container_name: dns-pinger
-    image: <registry>/<username>/dns-pinger:latest
+    image: ghcr.io/sheldon-cole/dns-pinger:latest
     environment:
       - DOMAINS=<comma.separated, domain.com>
       - INTERVAL=300
